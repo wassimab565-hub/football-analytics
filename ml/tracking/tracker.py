@@ -18,7 +18,7 @@ def write_tracker_config(path, track_buffer=90):
 
 def track_people(detector, video, tracker_cfg, conf=0.10, imgsz=1280, classes=PEOPLE_CLASSES):
     rows = []
-    results = detector.model.track(
+    results = detector.new_model().track(
         source=str(video),
         imgsz=imgsz,
         conf=conf,
