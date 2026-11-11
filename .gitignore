@@ -43,4 +43,4 @@ Thumbs.db
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !videos/input/.gitkeep
-!videos/output/.gitkeep
+!videos/output/.gitkeepbackend/data/

@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from ml.detection.detector import Detector
+from ml.export import export_json
 from ml.pitch.homography import HomographyProvider, fit_homographies, to_pitch
 from ml.pitch.keypoints import PitchKeypointModel
 from ml.pitch.pitch_config import L, W
@@ -15,6 +16,9 @@ from ml.utils.drawing import render_minimap
 from ml.utils.video import to_gif, video_info
 
 MARGIN = 5
+STAGES = ("tracking", "teams", "ball", "pitch", "homography", "render")
+SHARE = (0.42, 0.06, 0.14, 0.28, 0.02, 0.08)
+START = dict(zip(STAGES, np.concatenate([[0.0], np.cumsum(SHARE)[:-1]])))
 
 
 def inside_pitch(x, y):
@@ -57,36 +61,52 @@ def project_ball(traj, provider):
     return positions
 
 
-def run(video, detector_weights, pitch_weights, out_dir):
+def run(video, detector_weights, pitch_weights, out_dir, progress=None, render_video=True):
     video, out_dir = Path(video), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     info = video_info(video)
 
+    def at(stage):
+        if progress:
+            progress(stage, float(START[stage]))
+
     detector = Detector(detector_weights)
+
+    at("tracking")
     tracker_cfg = write_tracker_config(out_dir / "botsort.yaml")
     tracks = track_people(detector, video, tracker_cfg)
     tracks.to_csv(out_dir / "tracks.csv", index=False)
 
+    at("teams")
     clean = clean_tracks(tracks)
     teams = assign_teams(track_features(video, clean))
     clean["team"] = clean.track_id.map(teams)
     clean.to_csv(out_dir / "tracks_teams.csv", index=False)
 
+    at("ball")
     traj = select_ball_path(detector.ball_candidates(video), info["n_frames"])
     traj.to_csv(out_dir / "ball_track.csv")
 
+    at("pitch")
     kps = PitchKeypointModel(pitch_weights).predict_video(video)
     kps.to_csv(out_dir / "pitch_keypoints.csv", index=False)
-    Hs, stats = fit_homographies(kps, info["width"], info["height"])
-    provider = HomographyProvider(Hs)
 
+    at("homography")
+    Hs, _ = fit_homographies(kps, info["width"], info["height"])
+    provider = HomographyProvider(Hs)
     positions = project_players(clean, provider)
     positions.to_csv(out_dir / "minimap_positions.csv", index=False)
     ball = project_ball(traj, provider)
+    export_json(positions, ball, info, out_dir / "result.json")
 
-    minimap = out_dir / f"{video.stem}_minimap.mp4"
-    render_minimap(positions, ball, info["n_frames"], info["fps"], minimap)
-    to_gif(minimap, out_dir / f"{video.stem}_minimap.gif")
+    if render_video:
+        at("render")
+        minimap = out_dir / f"{video.stem}_minimap.mp4"
+        render_minimap(positions, ball, info["n_frames"], info["fps"], minimap)
+        to_gif(minimap, out_dir / f"{video.stem}_minimap.gif")
+
+    if progress:
+        progress("done", 1.0)
 
     return {
         "frames": info["n_frames"],
