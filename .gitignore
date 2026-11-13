@@ -44,3 +44,6 @@ Thumbs.db
 !data/processed/.gitkeep
 !videos/input/.gitkeep
 !videos/output/.gitkeepbackend/data/
+
+!artifacts/detector_yolo26n_1280.pt
+!artifacts/pitch_yolo26s_pose_960.pt
